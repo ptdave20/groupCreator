@@ -18,6 +18,17 @@ found at: https://console.developers.google.com
 
 Grant it permissions to Admin Directory V1, download the credentials file to the project directory and name it config.json
 
+## Building
+In order to build this, you need to Go development tools. They are available at https://golang.org/dl/.
+Follow the instructions for the appropriate operating systemyou are on. After, you can download and install by running:
+
+```
+go get "github.com/ptdave20/groupCreator"
+go install "github.com/ptdave20/groupCreator"
+```
+
+This will install the binary to your default go binary directory, which is normally your <user directory>/go/bin
+
 ## Running
 Execute the application with the csv files as arguments, you can run through multiple.
 During the first run, it will prompt to authenticate it, and should automatically open the browser for you.
