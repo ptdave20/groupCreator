@@ -66,3 +66,6 @@ crashlytics-build.properties
 fabric.properties
 /config.json
 /token.json
+
+.idea/googleGroupCreator.iml
+.idea/modules.xml
