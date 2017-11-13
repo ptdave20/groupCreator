@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"github.com/shibukawa/configdir"
@@ -9,13 +11,12 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/admin/directory/v1"
+	"google.golang.org/api/groupssettings/v1"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
-	"encoding/csv"
-	"io"
-	"bytes"
 	"strings"
 )
 
@@ -43,7 +44,7 @@ func GetClient() (*http.Client, error) {
 		return nil, err
 	}
 
-	o2, err := google.ConfigFromJSON(cfgBytes, admin.AdminDirectoryGroupScope)
+	o2, err := google.ConfigFromJSON(cfgBytes, admin.AdminDirectoryGroupScope, groupssettings.AppsGroupsSettingsScope)
 
 	if err != nil {
 		return nil, err
@@ -92,7 +93,8 @@ func main() {
 		return
 	}
 
-	groupService, err := admin.New(client)
+	adminService, err := admin.New(client)
+	groupService, err := groupssettings.New(client)
 
 	for i, v := range args[1:] {
 		fmt.Printf("Reading file #%d: %s\n",i,v)
@@ -131,13 +133,13 @@ func main() {
 			}
 
 			// Does the group exist?
-			group, err := groupService.Groups.Get(address).Do()
+			group, err := adminService.Groups.Get(address).Do()
 			if err!=nil {
 				group = new(admin.Group)
 				group.Name = name
 				group.Email = address
 
-				group, err = groupService.Groups.Insert(group).Do()
+				group, err = adminService.Groups.Insert(group).Do()
 				if err!= nil {
 					fmt.Printf("Error creating group %s: %s\n",address, err.Error())
 					continue
@@ -147,10 +149,44 @@ func main() {
 			if group.Name != name {
 				group.Name = name
 
-				group, err = groupService.Groups.Patch(group.Id, group).Do()
+				group, err = adminService.Groups.Patch(group.Id, group).Do()
 				if err!= nil {
 					fmt.Printf("Error updating group %s: %s\n",address, err.Error())
 					continue
+				}
+			}
+
+			// We need to check the group settings
+			settings, err := groupService.Groups.Get(group.Email).Do()
+			if err != nil {
+				fmt.Printf("Error pulling settings for group %s\n", group.Name)
+			} else {
+				settings.AllowExternalMembers = "false"
+				settings.AllowGoogleCommunication = "false"
+				settings.AllowWebPosting = "true"
+				settings.ArchiveOnly = "false"
+				settings.IncludeCustomFooter = "false"
+				settings.IncludeInGlobalAddressList = "true"
+				settings.IsArchived = "true"
+				settings.MaxMessageBytes = 26214400
+				settings.MembersCanPostAsTheGroup = "false"
+				settings.MessageDisplayFont = "DEFAULT_FONT"
+				settings.MessageModerationLevel = "MODERATE_NONE"
+				settings.ReplyTo = "REPLY_TO_SENDER"
+				settings.SendMessageDenyNotification = "false"
+				settings.ShowInGroupDirectory = "true"
+				settings.SpamModerationLevel = "MODERATE"
+				settings.WhoCanAdd = "ALL_MANAGERS_CAN_ADD"
+				settings.WhoCanContactOwner = "ALL_IN_DOMAIN_CAN_CONTACT"
+				settings.WhoCanInvite = "ALL_MANAGERS_CAN_INVITE"
+				settings.WhoCanJoin = "INVITED_CAN_JOIN"
+				settings.WhoCanLeaveGroup = "NONE_CAN_LEAVE"
+				settings.WhoCanPostMessage = "ALL_IN_DOMAIN_CAN_POST"
+				settings.WhoCanViewGroup = "ALL_IN_DOMAIN_CAN_VIEW"
+				settings.WhoCanViewMembership = "ALL_MEMBERS_CAN_VIEW"
+
+				if _, e := groupService.Groups.Patch(group.Email, settings).Do(); e != nil {
+					fmt.Printf("Error patching settings: %s", e.Error())
 				}
 			}
 
@@ -158,7 +194,7 @@ func main() {
 				parentGroups := strings.Split(memberOf,",")
 				for _, parent := range parentGroups {
 					// Is it a member of the parent group?
-					member, err := groupService.Members.Get(parent,address).Do()
+					member, err := adminService.Members.Get(parent, address).Do()
 					if err != nil {
 						// Not a member, add it
 						member = new(admin.Member)
@@ -166,7 +202,7 @@ func main() {
 
 						member.Role = "MEMBER"
 
-						member, err = groupService.Members.Insert(parent,member).Do()
+						member, err = adminService.Members.Insert(parent, member).Do()
 						if err!= nil {
 							fmt.Printf("Error making %s a member of %s: %s\n",address,parent,err.Error())
 							continue
@@ -174,7 +210,6 @@ func main() {
 					}
 				}
 			}
-
 
 			line++
 		}
